@@ -1,0 +1,780 @@
+---
+title: "Vaccin"
+author: "cb"
+date: "17/03/2021"
+output: html_document
+---
+![Escif](aguja.jpg)
+* source : https://rangedesvoitures.com/2021/01/15/street-art-aguja-escif-valencia/
+
+## Data et package
+
+Le jeu de donnée a été constitué avec des étudiants de M1 dans le cadre d'un cours de méthodologie. C'est un échantillon de convenance, constitué en boules de neige qui décrit les opinions d'étudiants de l'ouest parisien et de leur entourage. S'il n'est pas représentatif, il permet au moins d'avoir un aperçu significatif de l'attitude de ce groupe de population à l'égard de la vaccination anti covid19.
+
+On peut répondre à une version modifiée [ici](https://docs.google.com/forms/d/e/1FAIpQLSdg2M0-mu5iICGt3WLwAm-R9TdthK38b_FXAHE5ygiEXaB2GQ/viewform?usp=sf_link)
+
+
+```{r setup, echo = TRUE, warning=FALSE, message= FALSE, fig.width = 10}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message= FALSE, fig.width = 10)
+
+library(tidyverse)
+library(reshape2)
+library(ggcorrplot)
+library(ppcor)
+library(psych)
+library(gridExtra)
+library(jtools)
+library(interactions)
+library(GGally)
+library(viridis)
+library("igraph")
+library(lavaan)
+library(semTools)
+library(semPlot)
+
+
+
+theme_set(theme_bw())
+df <- read_csv("Votre opinion sur les vaccins.csv")
+
+```
+
+
+## Recodage
+
+Quelques recodage sont nécessaires
+
+
+```{r recodage}
+df<-df%>%rename(Sexe=2, 
+                Age=3,
+                Diplome=4,
+                Impactgrav=6,
+                DifficultéAdaptation=7,
+                Symptom=9,
+                ImpactElevé=10,
+                Biengéré= 11,
+                ContraintesSupportables= 12, 
+                ContraintesCoherentes= 13, 
+                ContraintesNecessaires=14,
+                Bieninformé=15,
+                GravitéPercue=16,
+                Intention =28,
+                recommandation=29,
+                risquepercu=33,
+                passeportvac=36,
+                gb_MasqueInt=18,
+                gb_MasqueExt=19,
+                gb_LaverMain=20,
+                gb_1m=21,
+                gb_tester=22,
+                gb_Eviterfoule=23,
+                gb_chezsoi=24,
+                gb_teletravail=25,
+                gb_gel=26,
+                gb_embrassade=27)
+
+df$Age[df$Age=="Moins de 15 ans"]<-"15-19 ans"
+df$Age[df$Age=="66 et 75 ans"]<-"56- 65 ans"
+
+
+
+df$Sexe[df$Sexe=="Je ne souhaite pas répondre"]<-"Femme"
+df$Diplome[df$Diplome=="Je ne souhaite pas répondre"]<-"Bac et moins"
+
+df$Diplome[df$Diplome=="CAP, BEP"]<-"Bac et moins"
+df$Diplome[df$Diplome=="Brevet"]<-"Bac et moins"
+df$Diplome[df$Diplome=="Baccalauréat"]<-"Bac et moins"
+df$Diplome[df$Diplome=="Licence, Licence professionnelle"]<-"Licence"
+df$Diplome[df$Diplome=="DEUG, BTS, DUT, DEUST"]<-"Licence"
+df$Diplome[df$Diplome=="Maîtrise, Master 1"]<-"Master"
+df$Diplome[df$Diplome=="Master 2"]<-"Master"
+
+df$Impactgrav[is.na(df$Impactgrav)]<-0
+
+df$Impactgrav<-as.factor(df$Impactgrav)
+
+
+```
+
+# Description de l'échantillon
+
+Commençons par décrire la population.
+
+```{r desc, echo=FALSE}
+brks <- c(0, 0.10,.2,.3,.4,.5,.6,.7,.8)
+
+
+g1<- ggplot(df,aes(x=Sexe))+geom_bar(aes(y = (..count..)/sum(..count..)), fill="peachpuff2") + scale_y_continuous(breaks = brks, labels = scales::percent(brks)) +coord_flip()+labs(title = "Répartition par genre", x=NULL, y="Proportion")
+
+g2<-ggplot(df,aes(x=Age))+geom_bar(aes(y = (..count..)/sum(..count..)),fill="peachpuff2") + scale_y_continuous(breaks = brks, labels = scales::percent(brks)) +coord_flip()+labs(title = "Répartition par âge",x=NULL, y="Proportion")
+
+g3<-ggplot(df,aes(x=Diplome))+geom_bar(aes(y = (..count..)/sum(..count..)),fill="peachpuff2") + scale_y_continuous(breaks = brks, labels = scales::percent(brks)) +coord_flip()+labs(title = "Répartition par diplôme",x=NULL, y="Proportion")
+
+grob<-grid.arrange(g1,g2,g3, ncol=3)
+ggsave("corr1.jpeg",plot=grob, width = 18, height = 14, units = "cm")
+
+```
+
+# Attitudes face au vaccin
+
+On utilise les questions suivantes : 
+ * Allez-vous vous faire vacciner dès que ce sera possible ?  (peu probable , très probable)
+ * Conseillez-vous à vos proches, surtout les plus âgés, de se faire vacciner ? (non/ oui)
+ * Pensez-vous être correctement informé.e des vaccins et des qualités/défauts des vaccins qui vous sont proposés ? (mal /bien informé)
+
+
+## Distribution des variables
+
+ * le caractère bimodal de la distribution : on a l'intention de se faire vacciner ou non, peu d'indécision et une répartition équilibrée entre les deux pôles.
+ * Mais on recommande nettement tout en étant plutôt hostile au passeport vaccinal.
+ * en revanche, le risque perçu est plus homogène centré sur une position intermédiaire.
+ 
+ 
+
+```{r attitude1}
+
+x<-cbind(df[,28],df[,29],df[,33],df[,36])
+
+r<- cor(x)
+
+y<-x %>% melt()
+ggplot(y,aes(x=value,group=variable))+geom_density(aes(fill=variable), alpha=.5)+facet_wrap(vars(variable))
+ 
+```
+ 
+ 
+## Analyse des corrélations
+ 
+ Examinons les corrélation à la fois au sens de Pearson mais aussi de relation non-linéaire telle qu'une méthode comme Loess permet de le mettre en évidence.
+ 
+ * Une forte intercorrélation entre les items indique une même dimension d'attitude
+ * entre l'intention et la recommendation une relation concave s'observe, l'intention croissante a des effets plus fort à niveau faible qu'à niveau fort, dès qu'on envisage , meme avec doute, la vaccination, on encourage ses vieux parents.
+
+
+```{r attitude2}
+ 
+# Check correlations (as scatterplots), distribution and print corrleation coefficient 
+ggpairs(x, title="Attitude à l'égard de la vaccination - Correlogram",
+        lower = list(continuous = wrap("smooth",  method = "loess"),color="pink",alpha = 0.2, size=0.1))
+
+ggsave("corr1.jpeg",plot=last_plot(), width = 18, height = 14, units = "cm")
+
+```
+
+## Approfondir en examinant les corrélations partielles
+
+
+On peut être encore plus précis, en étudiant les corrélation partielles pour détecter des relations spécifiques entre les indicateurs ( en se rappelant qu'un modèle factoriel se caractérise par des corrélations partielles qui tendent vers zero)
+ * l'intention a tendance a être corrélé spécifiquement aux autres items mais plus particuilèement à la recommandation
+ * le risque percu pèse sur l'intention, moins sur la recommandation.
+ * Le passeport vaccinal dépend de l'intention, essentiellement, est-il la récompense attendue ? Il est indépendant du risque perçu. 
+
+```{r attitude3}
+
+g1<-ggcorrplot(r ,type = "lower",  lab = TRUE, title="Pearson correlation")
+
+pr<-pcor(x)
+pr<-pr$estimate
+names<-row.names(r)
+colnames(pr)<-names
+
+g2<-ggcorrplot(pr ,type = "lower",  lab = TRUE,title="Partial correlation")
+grob<-grid.arrange(g1,g2, ncol=2)
+ggsave("corr2.jpeg",plot=grob, width = 18, height = 14, units = "cm")
+
+```
+
+## Etude comparative des attitudes
+
+Examinons maintenant les différences d'attitudes en termes de catégories socio-démo.
+
+
+```{r comparaison}
+x1<-cbind(df[,2:3],x) %>% filter(Sexe!="Je ne souhaite pas répondre")
+
+
+library(viridis)
+  
+foo<-x1 %>%
+  filter(Sexe=="Femme"| Sexe=="Homme") %>%
+  group_by(Age, Sexe) %>% 
+  summarise(recommandation=mean(recommandation),
+            risquepercu=mean(risquepercu), 
+            Intention=mean(Intention),
+            passeportvac=mean(passeportvac)
+            )
+
+foo<-melt(foo)
+ggplot(foo, aes(x=Age,y=value,group=Sexe))+geom_line(aes(color=Sexe), size=1.2)+
+  scale_color_viridis(discrete=TRUE)+
+  ylim(0,10)+ facet_wrap(.~variable,ncol=2)+#coord_flip()+
+  theme(axis.text.x = element_text(angle = 60, vjust = 0.5, hjust=.5))
+ggsave("intent1.jpeg",plot=last_plot(), width = 18, height = 14, units = "cm")
+
+x1<-cbind(df[,3:4],x)
+
+foo<-x1 %>%
+  group_by(Age, Diplome) %>% 
+  summarise(recommandation=mean(recommandation),
+            risquepercu=mean(risquepercu), 
+            Intention=mean(Intention),
+            Passeportvac=mean(passeportvac)
+            )
+
+foo<-melt(foo)
+ggplot(foo, aes(x=Age,y=value,group=Diplome))+geom_line(aes(color=Diplome), size=1.2)+
+  scale_color_viridis(discrete=TRUE)+
+  ylim(0,10)+ facet_wrap(.~variable,ncol=2)+#coord_flip()+
+  theme(axis.text.x = element_text(angle = 60, vjust = 0.5, hjust=.5))
+ggsave("intent2.jpeg",plot=last_plot(), width = 18, height = 14, units = "cm")
+
+
+```
+
+
+Modélisons un peu avec un outil simple. Une analyse de variance qui prend en compte quelques interactions
+
+
+
+```{r comparaison2}
+x1<-cbind(df[,2:4],x) %>% filter(Sexe!="Je ne souhaite pas répondre")
+
+y<-melt(data = x1, id.vars=c("Age", "Sexe", "Diplome"))
+fit<-lm(value~variable+ Age+Sexe+ Diplome+ variable:Age+variable:Sexe+ variable:Diplome, y)
+anova(fit)
+```
+
+et on regarde les moyennes marginales, celles que le modèles prédit. Ici les deux interactions qu'on a détectées.
+ 
+Le bilan est clair : les hommes sont plus confiants que les femmes, surout pour recommander la vacination à leurs proches.  Quant à l'âge la césure se fait au delà de la quarantaine, où l'intention de se vacciner est très forte, le risque perçu chutant au-delà des 50 ans.
+
+Il y a une rupture d'attitude qui colle avec la distribution des risques.
+ 
+
+```{r comparaison3}
+
+plot_summs(fit)
+library(interactions)
+cat_plot(fit,pred=Age, modx = variable, int.width=.2, dodge.width=0)+geom_line(aes(color=variable), size=2)+ylim(0,10)
+cat_plot(fit,pred=Sexe, modx = variable, int.width=.2,dodge.width=0)+geom_line(aes(color=variable), size=2)+ylim(0,10)
+cat_plot(fit,pred=Diplome, modx = variable, int.width=.2,dodge.width=0)+geom_line(aes(color=variable), size=2)+ylim(0,10)
+
+```
+
+
+# Perception de l'impact de l'épidémie
+
+ 
+ 
+
+## Sévérité du contact avec la maladie
+
+ On mesure d'abord l'exposition à l'épidémie par une question binaire, l'exposition consuisant à une question auxilliaire sur la gravité de l'impact. On utilise cette variable en une échelle à 6 degrés comme proxy de l'expérience vécue.
+
+
+```{r sev1}
+
+ggplot(df,aes(x=Impactgrav))+geom_bar(aes(y = (..count..)/sum(..count..)), fill="peachpuff2") + scale_y_continuous(breaks = brks, labels = scales::percent(brks)) +coord_flip()+
+  labs(title = "Répartition par Sévérité du contact covid", x=NULL, y="Proportion")
+
+ggsave("impact5.jpeg",plot=last_plot(), width = 18, height = 14, units = "cm")
+
+
+```
+
+Une question sur les symptômes perçus donne une autre nuance. L'anxiété est de mise pour plus de la moitié de la population.
+
+
+```{r word1}
+
+df<-df%>%
+  mutate(sy_Anx=ifelse(str_extract(Symptom,"Anxiété")=="Anxiété",1,0),
+         sy_Productiv=ifelse(str_extract(Symptom,"Baisse de productivité")=="Baisse de productivité",1,0),
+         sy_Stress=ifelse(str_extract(Symptom,"Stress")=="Stress",1,0),
+         sy_Decroch=ifelse(str_extract(Symptom,"Décrochage scolaire")=="Décrochage scolaire",1,0),
+         sy_Deprim=ifelse(str_extract(Symptom,"Déprime/baisse de morale")=="Déprime/baisse de morale",1,0)
+         )
+foo<-df[,54:58]
+foo$id<-rownames(foo)
+foo<-melt(foo)
+foo$value[is.na(foo$value)]<-0
+foo<-foo%>%group_by(variable)%>%summarise(value=mean(value))
+
+my_x_labels <- c("Anxiété",  "Baisse de productivité","Stress","Décrochage scolaire","Déprime/ baisse de moral")
+
+ggplot(foo,aes(x=variable, y=value))+geom_bar(stat="identity",fill="peachpuff3")+coord_flip()+
+  labs(title = "Fréquence des symptômes", x=NULL, y="Proportion")+
+  scale_x_discrete(labels = my_x_labels)+
+  scale_y_continuous(breaks = brks, labels = scales::percent(brks))
+
+ggsave("impact6.jpeg", plot=last_plot(), width = 18, height = 14, units = "cm")
+
+```
+
+## Corrélations des variables d'impact
+
+Puis on évalue l'impact percu par trois autres variables
+ 
+ * Dans quelle mesure votre vie a-t-elle été affectée par les contraintes engendrées par l'épidémie ?
+ * Quel degré de gravité donneriez-vous à l'épidémie de Covid en France ? 
+ * Est-ce qu’il a été difficile pour vous de vous adapter aux conditions imposées par le gouvernement (confinement, couvre-feu, télétravail, etc) ?
+ 
+
+Les difficultés d'adaptation sont d'autant plus grandes que l'on a le sentiment d'avoir une vie fortement affectée. Elles sont aussi associées à une perception moindre de la gravité qui est indépendante de l'impact. Ceux qui sont le plus affectés en font is un cas personnel ? Est-ce le trait d'un victimisation?
+
+On notera que l'exposition au virus et la gravité de ses conséquences sur la santé ne sont pas liées. L'ampact sur la vie personnelle, les difficultés d'adapation et la gravité perçue de l'épidémie n'ont rien à voir avec avec l'épreuve de la maladie, et donc tout à voir avec l'effet conjuguée des restrictions sociales.
+
+
+```{r impact1}
+
+x<-cbind(df[,6:7],df[,10],df[,16])
+x$Impactgrav<-as.numeric(x$Impactgrav)
+r<- cor(x)
+
+
+ 
+ 
+# Check correlations (as scatterplots), distribution and print corrleation coefficient 
+ggpairs(x, title="correlogram with ggpairs()",lower = list(continuous = wrap("smooth",  method = "loess", alpha = 0.3, size=0.1), 
+                            discrete = "blank", combo="blank")) 
+ggsave("impact1.jpeg",plot=last_plot(), width = 18, height = 14, units = "cm")
+
+
+
+g1<-ggcorrplot(r ,type = "lower",  lab = TRUE, ,title="Pearson correlation")
+
+pr<-pcor(x)
+pr<-pr$estimate
+names<-row.names(r)
+colnames(pr)<-names
+
+g2<-ggcorrplot(pr ,type = "lower",  lab = TRUE, ,title="Partial correlation")
+grob<-grid.arrange(g1,g2, ncol=2)
+ggsave("impact2.jpeg",plot=grob, width = 18, height = 14, units = "cm")
+
+
+```
+
+
+## Analyse comparative de l'impact perçu
+
+```{r  impact1b}
+
+x1<-cbind(df[,2:3],df[,6:7],df[,10],df[,16]) %>% filter(Sexe!="Je ne souhaite pas répondre")
+x1$Impactgrav<-as.numeric(x1$Impactgrav)
+
+
+
+foo<-x1 %>%
+  filter(Sexe=="Femme"| Sexe=="Homme") %>%
+  group_by(Age, Sexe) %>% 
+  summarise(DifficultéAdaptation=mean(DifficultéAdaptation),
+            ImpactElevé=mean(ImpactElevé), 
+            GravitéPercue=mean(GravitéPercue),
+            Impactgrav=mean(Impactgrav, na.rm=TRUE)
+            )
+
+foo<-melt(foo)
+ggplot(foo, aes(x=Age,y=value,group=Sexe))+geom_line(aes(color=Sexe), size=1.2)+
+  scale_color_viridis(discrete=TRUE)+
+  ylim(0,10)+ facet_grid(.~variable)+#coord_flip()+
+  theme(axis.text.x = element_text(angle = 60, vjust = 0.5, hjust=.5))
+ggsave("impact3.jpeg",plot=last_plot(), width = 18, height = 14, units = "cm")
+
+x1<-cbind(df[,3:4],df[,6:7],df[,10],df[,16]) 
+x1$Impactgrav<-as.numeric(x1$Impactgrav)
+  
+foo<-x1 %>%
+  group_by(Age, Diplome) %>% 
+  summarise(DifficultéAdaptation=mean(DifficultéAdaptation),
+            ImpactElevé=mean(ImpactElevé), 
+            GravitéPercue=mean(GravitéPercue),
+                        Impactgrav=mean(Impactgrav, na.rm=TRUE)
+            )
+
+foo<-melt(foo)
+ggplot(foo, aes(x=Age,y=value,group=Diplome))+geom_line(aes(color=Diplome), size=1.2)+
+  scale_color_viridis(discrete=TRUE)+
+  ylim(0,10)+ facet_grid(.~variable)+#coord_flip()+
+  theme(axis.text.x = element_text(angle = 60, vjust = 0.5, hjust=.5))
+
+
+ggsave("impact4.jpeg",plot=last_plot(), width = 18, height = 14, units = "cm")
+
+
+
+```
+
+## test des effets
+
+```{r impact2}
+x1<-cbind(df[,2:4],df[,6:7],df[,10],df[,16]) %>% filter(Sexe!="Je ne souhaite pas répondre")
+x1$Impactgrav<-as.numeric(x1$Impactgrav)
+
+y<-melt(data = x1, id.vars=c("Age", "Sexe", "Diplome"))
+fit<-lm(value~variable+ Age+Sexe+variable:Age+ variable*Diplome, y)
+anova(fit)
+```
+
+ et on regarde les moyennes marginales, celles que le modèles prédit. Ici les deux interactions qu'on a détectées.
+ 
+ Le bilan est clair : les hommes sont plus confiants que les femmes, surout pour recommander la vacination à leurs proches.  Quant à l'âge la césure se fait au delà de la quarantaine, où l'intention de se vacciner est très forte, le risque perçu chutant au-delà des 50 ans.
+ Il y a une rupture d'attitude qui colle avec la distribution des risques.
+ 
+ 
+ 
+```{r imact3}
+
+plot_summs(fit)
+library(interactions)
+cat_plot(fit,pred=Age, modx = variable, int.width=.2, dodge.width=0)+geom_line(aes(color=variable), size=2)+ylim(0,10)
+cat_plot(fit,pred=Sexe, modx = variable, int.width=.2,dodge.width=0)+geom_line(aes(color=variable), size=2)+ylim(0,10)
+cat_plot(fit,pred=Diplome, modx = variable, int.width=.2,dodge.width=0)+geom_line(aes(color=variable), size=2)+ylim(0,10)
+
+```
+
+
+# Evaluation des politiques sanitaires
+
+quatres variables 
+
+- cohérence des politiques
+- bonne gestion des politiques
+- néçessité des politiques menées
+- politiques supportables
+- bon degré d'information des médias
+
+```{r jugement}
+
+
+x<-cbind(df[,11:15])
+
+r<- cor(x)
+
+# Check correlations (as scatterplots), distribution and print corrleation coefficient 
+ggpairs(x, title="correlogram with ggpairs()",lower = list(continuous = wrap("smooth", alpha = 0.3, size=0.1), discrete = "blank", combo="blank")) 
+
+ggsave("pol0.jpeg",plot=last_plot(), width = 18, height = 14, units = "cm")
+
+
+g1<-ggcorrplot(r ,type = "lower",  lab = TRUE, lab_size = 3, ,title="Pearson correlation")+
+  theme(axis.text.x=element_text(size=8),axis.text.y=element_text(size=8))
+g1
+
+pr<-pcor(x)
+pr<-pr$estimate
+names<-row.names(r)
+colnames(pr)<-names
+
+g2<-ggcorrplot(pr ,type = "lower",  lab = TRUE, lab_size = 3, ,title="Partial correlation")+
+  theme(axis.text.x=element_text(size=8),axis.text.y=element_text(size=8))
+grob<-grid.arrange(g1,g2, ncol=2)
+
+ggsave("pol1.jpeg",plot=grob, width = 18, height = 14, units = "cm")
+
+```
+
+## Comparaison des politiques par profil age et sexe et diplome
+
+Une forme en U caractéristique : jeunes et vieux plus positifs que les ages intermédiaires. Sont-il les plus affectés ?
+
+
+```{r comparaison impact}
+
+x1<-cbind(df[,2:3],x) %>% filter(Sexe!="Je ne souhaite pas répondre")
+
+foo<-x1 %>%
+  filter(Sexe=="Femme"| Sexe=="Homme") %>%
+  group_by(Age, Sexe) %>% 
+  summarise(Biengéré= mean(Biengéré),
+                ContraintesSupportables=  mean(ContraintesSupportables), 
+                ContraintesCoherentes=  mean(ContraintesCoherentes), 
+                ContraintesNecessaires= mean(ContraintesNecessaires),
+                Bieninformé= mean(Bieninformé)
+            )
+
+foo<-melt(foo)
+ggplot(foo, aes(x=Age,y=value,group=Sexe))+geom_line(aes(color=Sexe), size=1.2)+
+  scale_color_viridis(discrete=TRUE)+
+  ylim(0,10)+ facet_grid(.~variable)+#coord_flip()+
+  theme(axis.text.x = element_text(angle = 60, vjust = 0.5, hjust=1))
+
+ggsave("pol3.jpeg",plot=last_plot(), width = 18, height = 14, units = "cm")
+
+
+x1<-cbind(df[,3:4],x)
+
+foo<-x1 %>%
+  group_by(Age, Diplome) %>% 
+  summarise(Biengéré= mean(Biengéré),
+                ContraintesSupportables=  mean(ContraintesSupportables), 
+                ContraintesCoherentes=  mean(ContraintesCoherentes), 
+                ContraintesNecessaires= mean(ContraintesNecessaires),
+                Bieninformé= mean(Bieninformé)
+            )
+
+foo<-melt(foo)
+ggplot(foo, aes(x=Age,y=value,group=Diplome))+geom_line(aes(color=Diplome), size=1.2)+
+  scale_color_viridis(discrete=TRUE)+
+  ylim(0,10)+ facet_grid(.~variable)+#coord_flip()+
+  theme(axis.text.x = element_text(angle = 60, vjust = 0.5, hjust=.5))
+
+ggsave("pol4.jpeg",plot=last_plot(), width = 18, height = 14, units = "cm")
+
+```
+
+
+
+
+# Analyse des gestes barrières
+
+Un peu de recodage
+
+```{r GB1}
+
+foo<-df[,18:27]
+foo$id<-rownames(foo)
+foo<-melt(foo, id.var="id")
+
+foo<-foo %>%mutate(n=1)%>%
+  group_by(variable,value) %>% 
+  summarise(n=sum(n))  %>%
+  mutate(rel.freq = 100 * n/sum(n))
+
+foo$value<-factor(foo$value, levels = c("Jamais","Rarement", "Ça dépend des situations", "Souvent", "Systématiquement"))
+
+
+ggplot(foo, aes(x=variable, y=rel.freq))+
+         geom_bar(stat="identity",aes(fill=value), size=1.2)+ scale_fill_brewer(palette="PiYG")+coord_flip()+labs(title="Observance des gestes barrières", x= NULL)
+
+ggsave("gb1.jpeg",plot=last_plot(), width = 18, height = 14, units = "cm")
+
+
+foo<-df[,18:27]
+foo$id<-as.factor(rownames(foo))
+foo<-melt(foo, id.var="id")
+foo$value2[foo$value=="Jamais"]<-1
+foo$value2[foo$value=="Rarement"]<-2
+foo$value2[foo$value=="Ça dépend des situations"]<-3
+foo$value2[foo$value=="Souvent"]<-4
+foo$value2[foo$value=="Systématiquement"]<-5
+
+foo1<-foo %>%
+  group_by(variable) %>% 
+  summarise(m=mean(value2, na.rm=TRUE))
+
+
+
+foo2<-foo %>%dplyr::select(-value)
+
+foo2 <- dcast(foo2,id ~ variable)
+foo2<-foo2 %>%dplyr::select(-id)
+
+r<- cor(foo2)
+
+# Check correlations (as scatterplots), distribution and print corrleation coefficient 
+ggpairs(foo2, title="correlogram with ggpairs()",lower = list(continuous = wrap("smooth", alpha = 0.3, size=0.1), discrete = "blank", combo="blank")) 
+ggsave("gb00.jpeg",plot=last_plot(), width = 18, height = 14, units = "cm")
+
+
+g1<-ggcorrplot(r ,type = "lower",  lab = TRUE, lab_size = 2, ,title="Pearson correlation")+
+  theme(axis.text.x=element_text(size=8),axis.text.y=element_text(size=8))
+ggsave("gb01.jpeg",plot=last_plot(), width = 18, height = 14, units = "cm")
+
+foo2<-foo2%>%drop_na()
+pr<-pcor(foo2)
+pr<-pr$estimate
+names<-row.names(r)
+colnames(pr)<-names
+
+g2<-ggcorrplot(pr ,type = "lower",  lab = TRUE, lab_size = 2, ,title="Partial correlation")+
+  theme(axis.text.x=element_text(size=8),axis.text.y=element_text(size=8))
+
+ggsave("gb02.jpeg",plot=last_plot(), width = 18, height = 14, units = "cm")
+
+grob<-grid.arrange(g1,g2, ncol=2)
+
+ggsave("gb03.jpeg",plot=grob, width = 18, height = 14, units = "cm")
+
+
+
+
+```
+
+# Institution confiance
+
+
+foo$variable <- factor(foo$variable,levels = c("[La famille]", "[Les amis]", "[La science]", "[Médecine généraliste]", "[L'hôpital public]", "[Pharmacies]","[L'enseignement]", "[La justice]","[Les commerçants]", "[Le voisinage ]","[ Grands Laboratoires Pharmaceutiques]","[La police]","[L'administration]","[Hommes politiques]","[Les distributeurs]","[Les réseaux sociaux]","[Les grands médias]"))
+
+
+
+```{r GB2}
+
+foo<-df[,37:53]
+foo$id<-rownames(foo)
+foo<-melt(foo, id.var="id")
+
+foo<-foo %>%mutate(n=1)%>%
+  group_by(variable,value) %>% 
+  summarise(n=sum(n))  %>%
+  mutate(rel.freq = 100 * n/sum(n))
+
+foo$value<-factor(foo$value, levels = c("Aucune confiance", "Faible confiance", "Confiance modérée", "Confiance absolue"))
+
+foo$variable <- factor(foo$variable,levels = c("[La famille]", "[Les amis]", "[La science]", "[Médecine généraliste]", "[L'hôpital public]", "[Pharmacies]","[L'enseignement]", "[La justice]","[Les commerçants]", "[Le voisinage ]","[ Grands Laboratoires Pharmaceutiques]","[La police]","[L'administration]","[Hommes politiques]","[Les distributeurs]","[Les réseaux sociaux]","[Les grands médias]"))
+
+ggplot(foo, aes(x=variable, y=rel.freq))+
+         geom_bar(stat="identity",aes(fill=value), size=1.2)+ scale_fill_brewer(palette="PiYG")+coord_flip()
+
+ggsave("conf01.jpeg",plot=last_plot(), width = 18, height = 14, units = "cm")
+
+
+```
+
+# Un modèle général d'intention de la vaccination
+
+On construit d'abord un score de confiance sociale et conformité.
+
+```{r score}
+
+df2<-df%>%mutate_at(vars(37:53),~ifelse(.=="Aucune confiance",0,
+                                         ifelse(.=="Faible confiance",1,
+                                         ifelse(.=="Confiance modérée",2,3))))
+df2<-df2%>%mutate_at(vars(18:27),~ifelse(.=="Jamais",0,
+                                         ifelse(.=="Rarement",1,
+                                         ifelse(.=="Ça dépend des situations",2,
+                                                ifelse(.=="Souvent",3,4)))))
+
+df2$Norme<-rowSums(df2[18:27])
+df2$Gestion<-rowSums(df2[11:14])
+df2$ConfianceG<-rowSums(df2[37:53])
+
+```
+## Une analyse des corrélations des composantes de la Confiance
+
+```{r score2}
+
+x<-df2[,37:53]%>%drop_na()
+r<- cor(x)
+g1<-ggcorrplot(r ,type = "lower",  lab = TRUE, lab_size = 2, ,title="Pearson correlation")+
+  theme(axis.text.x=element_text(size=8),axis.text.y=element_text(size=8))
+g1
+ggsave("gb01.jpeg",plot=last_plot(), width = 18, height = 14, units = "cm")
+
+library(corrplot)
+par(cex=0.4)
+corrplot(r, method="color", order="hclust", addrect =6,
+         addCoef.col = "black", # Ajout du coefficient de corrélation
+         tl.col="Black", tl.cex=2,number.cex=1.5,tl.srt=45, #Rotation des etiquettes de texte
+         )
+ggsave("conf02.jpeg",plot=last_plot(), width = 18, height = 14, units = "cm")
+
+
+df2$Attitude<-df2$Intention+df2$recommandation
+df2$Impact<-df2$ImpactElevé+df2$DifficultéAdaptation
+
+df2$Impactgrav<-as.numeric(df2$Impactgrav)
+
+```
+
+## Un modèle de régression général
+
+```{r score2b}
+
+fit<- lm(Attitude~ConfianceG+Norme+risquepercu+ Impact+ GravitéPercue+Bieninformé+Gestion+Impactgrav+Age+Diplome+Sexe, data=df2)
+summ(fit)
+plot_summs(fit, scale=TRUE,plot.distributions=TRUE)+labs(title="Coefficient de régression standardisé")
+ggsave("conf04.jpeg",plot=last_plot(), width = 18, height = 14, units = "cm")
+
+
+```
+
+## Une exploration ar les corrélation partielles
+
+```{r score2c}
+
+x<-df2%>%dplyr::select(Attitude,ConfianceG,Norme,Impactgrav, risquepercu, Impact, GravitéPercue,DifficultéAdaptation, Bieninformé,Gestion)%>%drop_na()
+x$Impactgrav<-as.numeric(x$Impactgrav)
+
+r<- cor(x)
+pr<-pcor(x)
+pr<-pr$estimate
+names<-row.names(r)
+colnames(pr)<-names
+
+graph <- graph.adjacency(pr, weighted=TRUE, mode="upper")
+graph <- delete.edges(graph, E(graph)[ weight < 0.15 ])
+graph<-simplify(graph)
+E(graph)$width <-E(graph)$weight*20
+plot(graph,vertex.size=30)
+
+
+```
+
+## Un modèle structurel ( path analysis)
+
+C'est un système d'quation structurel dans lequel il y a trois variables purement exogènes :
+
+- la confiance sociale (score des confiances envers les 17 institutions)
+- l'adhésion aux normes sanitaires (score des gestes barrières)
+- l'expérience direct ou non du covid.
+
+Les deux variables endogènes sont l'attitude face à la vaccination ( intention +recommendation) et le jugement sur les politiques sanitaires. Ces derniers affectant l'attitude face au vaccins. Les variables médiatrices sont d'une part le sentiment d'être bien informé et  le degré avec lequel la vie est perturbée par l'épidémie et ses conséquences. 
+
+L'attitude dépend surtout de la perception du risque, puis de l'intégration sociale et enfin dans une faibles mesure du jugement politique. La perception du risque dépend fortement de la confiance mais aussi du sentitiment d'adaptation à la situation. Ni 'expérience directe du convid , ni la perception de la gravité de la situation ne semble jouer, les variables deviennent completement endogènes.
+
+
+```{r score2d}
+
+
+
+model <- ' # direct effect
+             Attitude ~ ConfianceG+Norme +Gestion +risquepercu+Bieninformé
+             Gestion~ConfianceG+Norme+DifficultéAdaptation+Bieninformé
+             Impact~Impactgrav
+             DifficultéAdaptation~Impact+Impactgrav
+             risquepercu~ConfianceG+DifficultéAdaptation+Bieninformé
+             GravitéPercue~Impact+DifficultéAdaptation
+             Bieninformé~ConfianceG+Norme
+          '
+fit <- sem(model, data = x)
+fitMeasures(fit, c("cfi","rmsea","srmr"))
+
+summary(fit)
+#semPaths(fit, intercepts = F, nodeLabels = 1:9)
+
+
+lbls <- c("Attitude\nvaccins", 
+          "Politique\nSanitaire ",
+          "Impact sur la \nvie personnelle",
+          "Difficultés\nd'adaptation",
+          "Risque perçu\ndes vaccins", 
+          "Gravité perçue",
+          "être bien\ninformé", 
+          "Confiance\nSociale",
+          "Adhésion\n aux normes",
+          "Contact avec \n le Covid19")
+
+ly <- matrix(c(-.5, -.75,
+               .5, -.75,
+               0.4, .5, 
+               0.35, -.15, 
+               -0.15, -0.15, 
+               0, 0.5,
+               -.5, 0.5,
+               -0.5,1, 
+               0,1,
+               .5,1), ncol = 2, 
+    byrow = TRUE)
+
+p<-semPaths(fit,layout=ly,nCharNodes = 0,
+         edge.color="black",what="std",
+         exoCov  = TRUE,residuals=FALSE,
+         sizeMan=12, sizeMan2=8,
+         nodeLabels = lbls)
+
+p$graphAttributes$Edges$curve <- c(0.9, 0.2, 0.5, 0, 0, 0)
+plot(p)
+
+```
