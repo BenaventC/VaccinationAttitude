@@ -1,7 +1,7 @@
 ---
-title: "Vaccin"
+title: "L'intention de se vacciner - un pre-test dans une population de master 1"
 author: "cb"
-date: "17/03/2021"
+date: "28/03/2021"
 output: html_document
 ---
 ![Escif](aguja.jpg)
@@ -27,7 +27,7 @@ library(jtools)
 library(interactions)
 library(GGally)
 library(viridis)
-library("igraph")
+library(igraph)
 library(lavaan)
 library(semTools)
 library(semPlot)
@@ -99,7 +99,7 @@ df$Impactgrav<-as.factor(df$Impactgrav)
 
 # Description de l'échantillon
 
-Commençons par décrire la population.
+Commençons par décrire l'échantillon.
 
 ```{r desc, echo=FALSE}
 brks <- c(0, 0.10,.2,.3,.4,.5,.6,.7,.8)
@@ -118,8 +118,9 @@ ggsave("corr1.jpeg",plot=grob, width = 18, height = 14, units = "cm")
 
 # Attitudes face au vaccin
 
-On utilise les questions suivantes : 
- * Allez-vous vous faire vacciner dès que ce sera possible ?  (peu probable , très probable)
+On utilise les questions suivantes  ( avec des échelles de 1 à 10) 
+
+ * Allez-vous vous faire vacciner dès que ce sera possible ?  (peu probable / très probable)
  * Conseillez-vous à vos proches, surtout les plus âgés, de se faire vacciner ? (non/ oui)
  * Pensez-vous être correctement informé.e des vaccins et des qualités/défauts des vaccins qui vous sont proposés ? (mal /bien informé)
 
@@ -164,11 +165,13 @@ ggsave("corr1.jpeg",plot=last_plot(), width = 18, height = 14, units = "cm")
 
 ## Approfondir en examinant les corrélations partielles
 
+On peut être encore plus précis, en étudiant les [corrélations partielles](http://www.psychometrie.jlroulin.fr/cours/aide_quizz.html?B2418.html) pour détecter des relations spécifiques entre les indicateurs (en se rappelant qu'un modèle factoriel se caractérise par des corrélations partielles qui tendent vers zero : la cause est un variable latente qui déterminent chacune des variables manifestes).
 
-On peut être encore plus précis, en étudiant les corrélation partielles pour détecter des relations spécifiques entre les indicateurs ( en se rappelant qu'un modèle factoriel se caractérise par des corrélations partielles qui tendent vers zero)
- * l'intention a tendance a être corrélé spécifiquement aux autres items mais plus particuilèement à la recommandation
+On représente les résultats en comparant la matrice de corrélation habituelle et celle des corrélations partielles par le biais d'un corrélogramme.
+
+ * l'intention a tendance a être corrélée spécifiquement aux autres items mais plus particuilèement à la recommandation
  * le risque percu pèse sur l'intention, moins sur la recommandation.
- * Le passeport vaccinal dépend de l'intention, essentiellement, est-il la récompense attendue ? Il est indépendant du risque perçu. 
+ * Le passeport vaccinal dépend de l'intention, essentiellement.Est-il la récompense attendue ? Il est indépendant du risque perçu. 
 
 ```{r attitude3}
 
@@ -232,6 +235,8 @@ ggsave("intent2.jpeg",plot=last_plot(), width = 18, height = 14, units = "cm")
 
 ```
 
+## Test des effets des profils
+
 
 Modélisons un peu avec un outil simple. Une analyse de variance qui prend en compte quelques interactions
 
@@ -245,9 +250,9 @@ fit<-lm(value~variable+ Age+Sexe+ Diplome+ variable:Age+variable:Sexe+ variable:
 anova(fit)
 ```
 
-et on regarde les moyennes marginales, celles que le modèles prédit. Ici les deux interactions qu'on a détectées.
+et on examine les moyennes marginales, celles que le modèle prédit. Ici les trois interactions qu'on a détectées.
  
-Le bilan est clair : les hommes sont plus confiants que les femmes, surout pour recommander la vacination à leurs proches.  Quant à l'âge la césure se fait au delà de la quarantaine, où l'intention de se vacciner est très forte, le risque perçu chutant au-delà des 50 ans.
+Le bilan est clair : les hommes sont plus confiants que les femmes, surout pour recommander la vaccination à leurs proches.  Quant à l'âge la césure se fait au delà de la quarantaine, où l'intention de se vacciner est très forte, le risque perçu chutant au-delà des 50 ans.
 
 Il y a une rupture d'attitude qui colle avec la distribution des risques.
  
@@ -265,18 +270,16 @@ cat_plot(fit,pred=Diplome, modx = variable, int.width=.2,dodge.width=0)+geom_lin
 
 # Perception de l'impact de l'épidémie
 
- 
- 
-
 ## Sévérité du contact avec la maladie
 
- On mesure d'abord l'exposition à l'épidémie par une question binaire, l'exposition consuisant à une question auxilliaire sur la gravité de l'impact. On utilise cette variable en une échelle à 6 degrés comme proxy de l'expérience vécue.
+On mesure d'abord l'exposition à l'épidémie par une question binaire, l'exposition conduisant à une question auxilliaire sur la gravité de l'impact. On utilise cette variable en une échelle à 6 degrés comme proxy de l'expérience vécue.
 
 
 ```{r sev1}
 
-ggplot(df,aes(x=Impactgrav))+geom_bar(aes(y = (..count..)/sum(..count..)), fill="peachpuff2") + scale_y_continuous(breaks = brks, labels = scales::percent(brks)) +coord_flip()+
-  labs(title = "Répartition par Sévérité du contact covid", x=NULL, y="Proportion")
+ggplot(df,aes(x=Impactgrav))+geom_bar(aes(y = (..count..)/sum(..count..)), fill="peachpuff2") + scale_y_continuous(breaks = brks, labels = scales::percent(brks)) +
+  coord_flip()+
+  labs(title = "Répartition par Sévérité du contact covid", x="Degré de sévérité du contact", y="Proportion")
 
 ggsave("impact5.jpeg",plot=last_plot(), width = 18, height = 14, units = "cm")
 
@@ -316,7 +319,7 @@ ggsave("impact6.jpeg", plot=last_plot(), width = 18, height = 14, units = "cm")
 
 Puis on évalue l'impact percu par trois autres variables
  
- * Dans quelle mesure votre vie a-t-elle été affectée par les contraintes engendrées par l'épidémie ?
+ * Dans quelle mesure votre vie a-t-elle été affectée par les contraintes engendrées par l'épidémie ? ( impactélevé)
  * Quel degré de gravité donneriez-vous à l'épidémie de Covid en France ? 
  * Est-ce qu’il a été difficile pour vous de vous adapter aux conditions imposées par le gouvernement (confinement, couvre-feu, télétravail, etc) ?
  
@@ -714,15 +717,21 @@ plot(graph,vertex.size=30)
 
 ## Un modèle structurel ( path analysis)
 
-C'est un système d'quation structurel dans lequel il y a trois variables purement exogènes :
+C'est un système d'équations structurelles - sans variable latente - dans lequel il y a trois variables purement exogènes :
 
 - la confiance sociale (score des confiances envers les 17 institutions)
 - l'adhésion aux normes sanitaires (score des gestes barrières)
 - l'expérience direct ou non du covid.
 
-Les deux variables endogènes sont l'attitude face à la vaccination ( intention +recommendation) et le jugement sur les politiques sanitaires. Ces derniers affectant l'attitude face au vaccins. Les variables médiatrices sont d'une part le sentiment d'être bien informé et  le degré avec lequel la vie est perturbée par l'épidémie et ses conséquences. 
+Les deux variables endogènes sont l'attitude face à la vaccination (intention +recommendation) et le jugement sur les politiques sanitaires. Ce dernier affectant l'attitude envers les vaccins. 
 
-L'attitude dépend surtout de la perception du risque, puis de l'intégration sociale et enfin dans une faibles mesure du jugement politique. La perception du risque dépend fortement de la confiance mais aussi du sentitiment d'adaptation à la situation. Ni 'expérience directe du convid , ni la perception de la gravité de la situation ne semble jouer, les variables deviennent completement endogènes.
+Les variables médiatrices sont d'une part le sentiment d'être bien informé et  le degré avec lequel la vie est perturbée par l'épidémie et ses conséquences. 
+
+L'attitude favorable au vaccin dépend surtout de la perception du risque, puis de l'intégration sociale et enfin dans une plus faible mesure du jugement sur les politiques sanitaires. La perception du risque dépend fortement de la confiance sociale mais aussi du sentiment d'adaptation à la situation. Ni l'expérience directe du covid , ni la perception de la gravité de la situation.
+
+On sera surpris que ni la proximité au covid, ni même le jugement de gravité de l'épidémie ne compte dans la décision. Ce qui apparait déterminant est une sorte d'équilibre entre la confiance que l'on a dans les institutions de la société et le sentiment d'être déstabilisé, inadapté à la situation générées par l'épidémie et ses conséquences sanitaires. 
+
+
 
 
 ```{r score2d}
